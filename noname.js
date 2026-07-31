@@ -1,0 +1,218 @@
+javascript:(function(){
+  if(window.location.hostname.includes("izen.lol")) return;
+  if(document.getElementById("pji-floating-ui")){
+    const w = document.getElementById("pji-floating-ui").shadowRoot?.querySelector("#wrapper");
+    if(w) w.classList.toggle("active");
+    return;
+  }
+
+  // Anti-Blur / Stay Focused Inject
+  const injectMain = () => {
+    const s = document.createElement("script");
+    s.textContent = `try{Object.defineProperty(document,"hidden",{get:()=>false,configurable:!0}),Object.defineProperty(document,"visibilityState",{get:()=>"visible",configurable:!0}),document.hasFocus=()=>!0}catch(e){}window.addEventListener("visibilitychange",e=>e.stopImmediatePropagation(),!0),window.addEventListener("blur",e=>e.stopImmediatePropagation(),!0),window.addEventListener("mouseleave",e=>e.stopImmediatePropagation(),!0);window.__pji_anti_redirect=!1;const o=window.open;window.open=function(...a){return window.__pji_anti_redirect?null:o.apply(this,a)};`;
+    (document.head || document.documentElement).appendChild(s);
+    s.remove();
+  };
+  injectMain();
+
+  // Smart Adblock CSS
+  const toggleAd = e => {
+    let c = document.getElementById("pji_adblock_css");
+    if(e){
+      if(!c){
+        c = document.createElement("style");
+        c.id = "pji_adblock_css";
+        c.textContent = `iframe[src*="doubleclick"],iframe[src*="adservice"],iframe[src*="popads"],iframe[src*="exoclick"],iframe[src*="juicyads"],iframe[src*="propellerads"],div[id^="google_ads"],div[class*="popunder"],div[class*="banner-ad"],[class*="sponsored-post"],[id*="script-ad"]{display:none!important;pointer-events:none!important}`;
+        (document.head || document.documentElement).appendChild(c);
+      }
+    } else c && c.remove();
+  };
+
+  const LS = k => { try { return JSON.parse(localStorage.getItem("pji_" + k)); } catch { return null; } };
+  const SS = (k, v) => { try { localStorage.setItem("pji_" + k, JSON.stringify(v)); } catch {} };
+
+  // Create UI Container
+  const ui = document.createElement("div");
+  ui.id = "pji-floating-ui";
+  ui.style.cssText = "all:initial;position:fixed;top:20px;left:20px;z-index:2147483647;touch-action:none;";
+  (document.body || document.documentElement).appendChild(ui);
+
+  const pos = LS("UiPos");
+  if(pos && typeof pos.left === "number" && typeof pos.top === "number"){
+    ui.style.left = pos.left + "px";
+    ui.style.top = pos.top + "px";
+  }
+
+  const shadow = ui.attachShadow({mode: "closed"});
+  const html = document.createElement("div");
+  html.innerHTML = `
+    <style>
+      :host { font-family: system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      #wrapper { width: min(320px, 88vw); background: rgba(18, 18, 22, .92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, .12); border-radius: 16px; box-shadow: 0 12px 36px rgba(0,0,0,.6); overflow: hidden; display: none; position: relative; margin-top: 10px; }
+      #wrapper.active { display: block; }
+      #trigger_bubble { width: 46px; height: 46px; background: #121214; border: 1px solid rgba(255, 255, 255, .16); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #10b981; font-size: 16px; font-weight: 900; cursor: grab; user-select: none; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+      #trigger_bubble:active { cursor: grabbing; }
+      .header { padding: 12px 14px; background: rgba(0, 0, 0, .25); display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, .06); cursor: grab; user-select: none; }
+      .credit-big { font-size: 14px; font-weight: 900; letter-spacing: .8px; color: #10b981; }
+      .close-btn { background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1); color: #9ca3af; border-radius: 8px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; font-weight: 700; }
+      .close-btn:hover { color: #fff; background: rgba(255, 255, 255, .15); }
+      .body-box { padding: 12px; }
+      .toggle-group { display: flex; flex-direction: column; gap: 10px; background: rgba(0, 0, 0, .2); padding: 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .04); }
+      .toggle-item { display: flex; justify-content: space-between; align-items: center; color: #e5e7eb; font-size: 12px; font-weight: 600; gap: 8px; }
+      .toggle-muted { color: #9ca3af; font-weight: 400; font-size: 10px; margin-top: 2px; }
+      .switch { position: relative; display: inline-block; width: 36px; height: 18px; flex: 0 0 auto; }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .slider { position: absolute; cursor: pointer; inset: 0; background: #374151; border-radius: 999px; transition: .2s; }
+      .slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+      input:checked + .slider { background: #10b981; }
+      input:checked + .slider:before { transform: translateX(18px); }
+    </style>
+    <div id="trigger_bubble" title="PJI • Đóng/Mở">PJI</div>
+    <div id="wrapper">
+      <div class="header">
+        <div class="credit-big">CREDIT • PJI</div>
+        <button class="close-btn" id="btn_close">✕</button>
+      </div>
+      <div class="body-box">
+        <div class="toggle-group">
+          <div class="toggle-item">
+            <span>Tự cuộn trang (Auto Scroll)<div class="toggle-muted">Tự động cuộn mượt khi gặp trang dài</div></span>
+            <label class="switch"><input type="checkbox" id="chk_scroll"><span class="slider"></span></label>
+          </div>
+          <div class="toggle-item">
+            <span>Khóa Chuyển Hướng (Anti-Redirect)<div class="toggle-muted">Chặn nhảy tab & link kẹp bẫy</div></span>
+            <label class="switch"><input type="checkbox" id="chk_shield"><span class="slider"></span></label>
+          </div>
+          <div class="toggle-item">
+            <span>Chặn quảng cáo (Smart Adblock)<div class="toggle-muted">Ẩn iframe & popup quảng cáo rác</div></span>
+            <label class="switch"><input type="checkbox" id="chk_ad"><span class="slider"></span></label>
+          </div>
+          <div class="toggle-item">
+            <span>Giữ tab luôn hoạt động (Stay Focused)<div class="toggle-muted">Chống đứng đếm ngược khi chuyển tab</div></span>
+            <label class="switch"><input type="checkbox" id="chk_focus"><span class="slider"></span></label>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  shadow.appendChild(html);
+
+  const bubble = shadow.querySelector("#trigger_bubble"),
+        wrapper = shadow.querySelector("#wrapper"),
+        header = shadow.querySelector(".header"),
+        btnClose = shadow.querySelector("#btn_close"),
+        chkScroll = shadow.querySelector("#chk_scroll"),
+        chkShield = shadow.querySelector("#chk_shield"),
+        chkAd = shadow.querySelector("#chk_ad"),
+        chkFocus = shadow.querySelector("#chk_focus");
+
+  let isDragging = !1, hasMoved = !1, startX = 0, startY = 0, initialLeft = 0, initialTop = 0, scrollInterval = null, scrollDir = 1;
+
+  const onDragMove = e => {
+    if(!isDragging) return;
+    const t = e.touches ? e.touches[0] : e, dx = t.clientX - startX, dy = t.clientY - startY;
+    if(Math.abs(dx) + Math.abs(dy) > 3) hasMoved = !0;
+    const newL = Math.max(6, Math.min(initialLeft + dx, (window.innerWidth || 0) - 50)),
+          newT = Math.max(6, Math.min(initialTop + dy, (window.innerHeight || 0) - 50));
+    ui.style.left = newL + "px";
+    ui.style.top = newT + "px";
+  };
+
+  const onDragEnd = () => {
+    if(!isDragging) return;
+    isDragging = !1;
+    window.removeEventListener("mousemove", onDragMove);
+    window.removeEventListener("mouseup", onDragEnd);
+    window.removeEventListener("touchmove", onDragMove);
+    window.removeEventListener("touchend", onDragEnd);
+    SS("UiPos", { left: parseInt(ui.style.left || "20", 10), top: parseInt(ui.style.top || "20", 10) });
+  };
+
+  const onDragStart = e => {
+    const path = e.composedPath ? e.composedPath() : [];
+    if(path.some(el => el && el.tagName && ["INPUT", "BUTTON", "LABEL"].includes(el.tagName))) return;
+    isDragging = !1;
+    hasMoved = !1;
+    const t = e.touches ? e.touches[0] : e;
+    startX = t.clientX; startY = t.clientY;
+    initialLeft = parseInt(ui.style.left || "20", 10);
+    initialTop = parseInt(ui.style.top || "20", 10);
+    isDragging = !0;
+    window.addEventListener("mousemove", onDragMove, {passive: !0});
+    window.addEventListener("mouseup", onDragEnd, {passive: !0});
+    window.addEventListener("touchmove", onDragMove, {passive: !0});
+    window.addEventListener("touchend", onDragEnd, {passive: !0});
+  };
+
+  bubble.addEventListener("mousedown", onDragStart);
+  header.addEventListener("mousedown", onDragStart);
+  bubble.addEventListener("touchstart", onDragStart);
+  header.addEventListener("touchstart", onDragStart);
+
+  bubble.onclick = () => { if(!hasMoved) wrapper.classList.toggle("active"); };
+  btnClose.onclick = () => wrapper.classList.remove("active");
+
+  // Load Settings
+  const st = LS("Settings") || {};
+  if(st.shield){ chkShield.checked = !0; window.__pji_anti_redirect = !0; }
+  if(st.focus) chkFocus.checked = !0;
+  if(st.ad){ chkAd.checked = !0; toggleAd(!0); }
+
+  // Auto Scroll
+  chkScroll.onchange = e => {
+    if(e.target.checked){
+      if(scrollInterval) clearInterval(scrollInterval);
+      scrollInterval = setInterval(() => {
+        const y = window.scrollY || document.documentElement.scrollTop,
+              max = document.body.scrollHeight - window.innerHeight;
+        if(scrollDir === 1){
+          window.scrollBy({top: 600, behavior: "smooth"});
+          if(y >= max - 30) scrollDir = -1;
+        } else {
+          window.scrollBy({top: -600, behavior: "smooth"});
+          if(y <= 30) scrollDir = 1;
+        }
+      }, 300);
+    } else {
+      if(scrollInterval) clearInterval(scrollInterval);
+      scrollInterval = null;
+    }
+  };
+
+  // Anti-Redirect
+  chkShield.onchange = e => {
+    const v = e.target.checked;
+    SS("Settings", {...LS("Settings") || {}, shield: v});
+    window.__pji_anti_redirect = v;
+  };
+
+  // Smart Adblock
+  chkAd.onchange = e => {
+    const v = e.target.checked;
+    SS("Settings", {...LS("Settings") || {}, ad: v});
+    toggleAd(v);
+  };
+
+  // Stay Focused
+  chkFocus.onchange = e => {
+    SS("Settings", {...LS("Settings") || {}, focus: e.target.checked});
+  };
+
+  // Block clicks on Anti-Redirect
+  window.addEventListener("click", e => {
+    if(!window.__pji_anti_redirect) return;
+    let el = e.target;
+    while(el && el !== document){
+      if(el.tagName === "A" || (el.style && el.style.cursor === "pointer")){
+        const href = el.getAttribute && el.getAttribute("href");
+        if(href && !href.startsWith("#") && !href.startsWith("javascript:")){
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        break;
+      }
+      el = el.parentNode;
+    }
+  }, !0);
+})();
